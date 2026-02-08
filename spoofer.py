@@ -1188,7 +1188,7 @@ function updateSerialStatus(){
       var col=b.label==='C5'?'#7DF9FF':'#FF00FF';
       var portShort=b.port.split('/').pop();
       barHtml+='<span class="board-pill"><span class="dot '+dot+'"></span><span style="color:'+col+';">'+b.label+'</span><span style="color:rgba(255,255,255,0.35);font-size:10px;">'+portShort+'</span></span>';
-      rosterHtml+='<div class="board-row"><span class="b-dot '+dot+'"></span><span class="b-label" style="color:'+col+';">'+b.label+'</span><span class="b-port">'+portShort+'</span><button onclick="removeBoard(\\''+b.port.replace(/'/g,"\\'")+'\\')" style="padding:2px 6px;font-size:9px;background:transparent;color:#ff3333;border:1px solid rgba(255,51,51,0.3);cursor:pointer;font-family:inherit;margin-left:4px;">X</button></div>';
+      rosterHtml+='<div class="board-row"><span class="b-dot '+dot+'"></span><span class="b-label" style="color:'+col+';">'+b.label+'</span><span class="b-port">'+portShort+'</span><button onclick="removeBoard(&apos;'+b.port.replace(/'/g,"&apos;")+'&apos;)" style="padding:2px 6px;font-size:9px;background:transparent;color:#ff3333;border:1px solid rgba(255,51,51,0.3);cursor:pointer;font-family:inherit;margin-left:4px;">X</button></div>';
     });
     el.innerHTML=barHtml;
     if(roster)roster.innerHTML=rosterHtml;
