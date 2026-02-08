@@ -318,7 +318,6 @@ void setup() {
         Serial.printf("%d%s", CHANNELS_5G[i], i < NUM_5G_CHANNELS - 1 ? "," : "\n");
     #endif
 
-    beep(1000, 50);
     ledFlash(100);
     Serial.println("Ready. Awaiting serial commands.\n");
 }
