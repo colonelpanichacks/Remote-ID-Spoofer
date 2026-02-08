@@ -67,13 +67,16 @@ static void beep(int freq, int ms) {
     noTone(BUZZER_PIN);
 }
 
-static void playCloseEncounters() {
+static void playBootSound() {
     if (buzzerMuted) return;
-    int notes[]    = {587, 659, 523, 262, 392};
-    int durations[] = {300, 300, 300, 600, 600};
-    for (int i = 0; i < 5; i++) {
+    // Super Mario Bros - Underground/Dungeon (World 1-2) bass riff
+    // C, C(oct), A, A(oct), Bb, Bb(oct) — fast octave pairs
+    int notes[]     = { 262, 523, 220, 440, 233, 466 };
+    //                  C4   C5   A3   A4   Bb3  Bb4
+    int durations[] = {  80,  80,  80,  80,  80,  80 };
+    for (int i = 0; i < 6; i++) {
         tone(BUZZER_PIN, notes[i], durations[i]);
-        delay(durations[i] + 50);
+        delay(durations[i] + 10);
         noTone(BUZZER_PIN);
     }
 }
@@ -281,7 +284,7 @@ void setup() {
     ledOff();
 
     delay(300);
-    playCloseEncounters();
+    playBootSound();
     ledFlash(200);
 
     if (!parse_mac(CONFIG_SPOOF_MAC, g_override_src_mac)) {
