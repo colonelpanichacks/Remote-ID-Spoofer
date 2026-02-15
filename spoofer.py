@@ -1117,6 +1117,7 @@ document.getElementById('play').onclick=function(){
   }
   if(!pilotMarker)return alert('Set pilot location first.');
   if(path.length<2)return alert('Set at least 2 waypoints.');
+  if(!isOn('swarmEnabled')&&!document.getElementById('basicId').value.trim())return alert('Remote ID is required. Enter a drone identifier before starting.');
   missionState='playing';playing=true;
   var missionData={basic_id:document.getElementById('basicId').value,drone_altitude:parseInt(document.getElementById('alt').value)||0,path:path};
   fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(missionData)}).catch(console.error);
