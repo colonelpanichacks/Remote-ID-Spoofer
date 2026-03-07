@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify, render_template_string, redirect, url
 import serial, json, glob, csv, time, threading
 import serial.tools.list_ports as list_ports
 from datetime import datetime
+import argparse
 import atexit
 
 ASCII_ART = r"""
@@ -1476,4 +1477,8 @@ def remove_board():
     return jsonify(status='ok', count=len(boards))
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    parser = argparse.ArgumentParser(description='Drone Spoofer')
+    parser.add_argument('-p', '--port', type=int, default=5000, help='Port to listen on (default: 5000)')
+    parser.add_argument('-d', '--debug', action='store_true', help='Enable debug mode')
+    args = parser.parse_args()
+    app.run(host='0.0.0.0', port=args.port, debug=args.debug)
