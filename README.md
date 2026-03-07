@@ -4,7 +4,7 @@
 
 **An OUI Spy firmware for WiFi-based FAA Remote ID spoofing and simulation.**
 
-Part of the [OUI Spy](https://github.com/colonelpanichacks) ecosystem -- built for the Seeed Studio XIAO ESP32-S3.
+Part of the [OUI Spy](https://github.com/colonelpanichacks) ecosystem -- built for the Seeed Studio XIAO ESP32-S3 and compatible ESP32-S3 boards (M5Stack Stamp S3).
 
 Inspired by [d0tslash](https://github.com/d0tslash) and **H.A.R.D** (Hackers Against Remote ID).
 
@@ -95,12 +95,13 @@ This project provides:
 |-------|------|------|--------|-----|
 | **Seeed XIAO ESP32-C5** | WiFi 6 | 2.4 + 5GHz | GPIO25 (D2) | GPIO27 (active HIGH) |
 | **Seeed XIAO ESP32-S3** | WiFi 4 | 2.4GHz only | GPIO3 (D2) | GPIO21 (active LOW) |
+| **M5Stack Stamp S3** | WiFi 4 | 2.4GHz only | GPIO1 (wire your own) | GPIO21 (SK6812 NeoPixel RGB) |
 
 Pin mapping and band capability auto-detected at compile time.
 
 ### Optional
-- Passive buzzer on D2 pin for audio feedback
-- Built-in LED for visual feedback
+- Passive buzzer on D2 pin for audio feedback (XIAO boards) or GPIO1 (M5Stack Stamp S3)
+- Built-in LED for visual feedback (NeoPixel RGB on M5Stack Stamp S3)
 
 ## Getting Started
 
@@ -116,9 +117,14 @@ Connect via USB and flash with PlatformIO:
 # ESP32-C5 (dual-band)
 pio run -e seeed_xiao_esp32c5 -t upload
 
-# ESP32-S3 (single-band)
+# ESP32-S3 — Seeed XIAO (single-band)
 pio run -e seeed_xiao_esp32s3 -t upload
+
+# ESP32-S3 — M5Stack Stamp S3 (single-band)
+pio run -e m5stack_stamps3 -t upload
 ```
+
+> **Note (M5Stack Stamp S3):** If the board is not detected, hold the **G0** button while plugging USB, then release to enter download mode. The Stamp S3 uses a built-in SK6812 NeoPixel RGB LED on GPIO21 (green flash on TX) and requires the Adafruit NeoPixel library (automatically pulled by PlatformIO).
 
 ### 3. Install Python Dependencies
 ```bash
@@ -177,7 +183,7 @@ Part of the [OUI Spy](https://github.com/colonelpanichacks/oui-spy) hardware & f
 | [OUI-SPY Foxhunter](https://github.com/colonelpanichacks/ouispy-foxhunter) | Precision BLE proximity tracker for radio direction finding | ESP32-S3 |
 | [Flock-You](https://github.com/colonelpanichacks/flock-you) | Flock Safety & Raven surveillance detector with GPS wardriving | ESP32-S3 |
 | [Sky Spy](https://github.com/colonelpanichacks/Sky-Spy) | Drone Remote ID detector — WiFi + BLE, multi-drone tracking | ESP32-S3 |
-| **Remote-ID-Spoofer** *(this repo)* | Remote ID spoofer & simulator with swarm mode | ESP32-S3 / ESP32-C5 |
+| **Remote-ID-Spoofer** *(this repo)* | Remote ID spoofer & simulator with swarm mode | ESP32-S3 / ESP32-C5 / M5Stack Stamp S3 |
 | [OUI-SPY UniPwn](https://github.com/colonelpanichacks/Oui-Spy-UniPwn) | Unitree robot BLE exploitation with AutoPwn and web UI | ESP32-S3 |
 
 ## Credits
