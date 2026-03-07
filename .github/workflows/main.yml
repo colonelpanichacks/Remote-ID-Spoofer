@@ -1,0 +1,62 @@
+name: PlatformIO CI
+
+on:
+  push:
+    branches: [ '**' ]
+    tags: [ 'v*' ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/penv
+          key: ${{ runner.os }}-pio-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install PlatformIO Core
+        run: pip install --upgrade platformio
+
+      - name: Build PlatformIO Project
+        run: pio run -e luatos_esp32c3
+
+      - name: Prepare Artifact
+        id: prepare_artifact
+        run: |
+          mkdir -p ./build-artifact
+          cp -r .pio/build/luatos_esp32c3/* ./build-artifact/
+          zip -r luatos_esp32c3-build-${{ github.sha }}.zip ./build-artifact/
+          echo "artifact_name=luatos_esp32c3-build-${{ github.sha }}.zip" >> $GITHUB_OUTPUT
+
+      - name: Upload Build Artifact to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.prepare_artifact.outputs.artifact_name }}
+          path: ./${{ steps.prepare_artifact.outputs.artifact_name }}
+
+      - name: Publish Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ github.event.head_commit.message }}
+          files: ./${{ steps.prepare_artifact.outputs.artifact_name }}
+          prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'rc') || contains(github.ref, 'alpha') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
