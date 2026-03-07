@@ -150,6 +150,7 @@ PORT_SELECT_HTML = """
         </select>
         <select name="label_{{ i }}" style="width:120px;font-size:clamp(12px,1.2vw,16px);padding:14px 10px;color:#7DF9FF;border-color:rgba(125,249,255,0.3);background:rgba(0,20,0,0.8);">
           <option value="S3" {% if active_labels[i]=='S3' %}selected{% endif %}>ESP32-S3</option>
+          <option value="C3" {% if active_labels[i]=='C3' %}selected{% endif %}>ESP32-C3</option>
           <option value="C5" {% if active_labels[i]=='C5' %}selected{% endif %}>ESP32-C5</option>
         </select>
       </div>
@@ -478,7 +479,9 @@ HTML = """
       <div style="display:flex;gap:4px;align-items:center;">
         <select id="addBoardPort" style="flex:1;padding:6px 8px;font-size:11px;background:rgba(0,0,0,0.4);color:#c0ffc0;border:1px solid rgba(125,249,255,0.15);font-family:inherit;"></select>
         <select id="addBoardLabel" style="width:68px;padding:6px 4px;font-size:11px;background:rgba(0,0,0,0.4);color:#7DF9FF;border:1px solid rgba(125,249,255,0.15);font-family:inherit;">
-          <option value="S3">S3</option><option value="C5">C5</option>
+          <option value="S3">S3</option>
+          <option value="C3">C3</option>
+          <option value="C5">C5</option>
         </select>
         <button onclick="doAddBoard()" style="padding:6px 10px;font-size:10px;background:transparent;color:lime;border:1px solid rgba(0,255,0,0.3);cursor:pointer;font-family:inherit;">ADD</button>
       </div>
