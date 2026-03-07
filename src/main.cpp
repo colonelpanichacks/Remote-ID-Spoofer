@@ -59,10 +59,10 @@
   static Adafruit_NeoPixel neopixel(NEOPIXEL_NUM, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #endif
 
-static const char*   BEACON_SSID     = "Starbucks WiFI";
+static const char*   BEACON_SSID     = "Starbucks WiFi";
 static const size_t  BEACON_SSID_LEN = 14;
 static const uint8_t AP_CHANNEL      = 6;
-static const char*   CONFIG_SPOOF_MAC = "60:60:1f:d3:B2:6a";
+static const char*   CONFIG_SPOOF_MAC = "60:60:1f:d3:b2:6a";
 
 // 5GHz channel table (UNII-3 band)
 static const uint8_t CHANNELS_5G[]   = {149, 153, 157, 161, 165};
