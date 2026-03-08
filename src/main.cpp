@@ -112,9 +112,7 @@ static void beep(int freq, int ms) {
 static void playBootSound() {
     if (buzzerMuted) return;
     // Super Mario Bros - Underground/Dungeon (World 1-2) bass riff
-    // C, C(oct), A, A(oct), Bb, Bb(oct) — fast octave pairs
     int notes[]     = { 262, 523, 220, 440, 233, 466 };
-    //                  C4   C5   A3   A4   Bb3  Bb4
     int durations[] = {  80,  80,  80,  80,  80,  80 };
     for (int i = 0; i < 6; i++) {
         tone(BUZZER_PIN, notes[i], durations[i]);
@@ -317,23 +315,12 @@ static void clear_vendor_ie() {
     esp_wifi_set_vendor_ie(false, WIFI_VND_IE_TYPE_PROBE_RESP, WIFI_VND_IE_ID_0, NULL);
 }
 
-static void update_ap_ssid() {
+static void init_ap_ssid() {
     wifi_config_t cfg = {};
-    char buf[ODID_ID_SIZE + 10];
-    size_t len;
-
-    if (g_basic_id[0] == '\0') {
-        memcpy(buf, BEACON_SSID, BEACON_SSID_LEN);
-        buf[BEACON_SSID_LEN] = '\0';
-        len = BEACON_SSID_LEN;
-    } else {
-        len = snprintf(buf, sizeof(buf), "RID-%s", g_basic_id);
-    }
-
-    memcpy(cfg.ap.ssid, buf, len);
-    cfg.ap.ssid_len       = (uint8_t)len;
-    cfg.ap.channel        = AP_CHANNEL;
-    cfg.ap.authmode       = WIFI_AUTH_OPEN;
+    memcpy(cfg.ap.ssid, BEACON_SSID, BEACON_SSID_LEN);
+    cfg.ap.ssid_len = BEACON_SSID_LEN;
+    cfg.ap.channel = AP_CHANNEL;
+    cfg.ap.authmode = WIFI_AUTH_OPEN;
     cfg.ap.max_connection = 4;
     esp_wifi_set_config(WIFI_IF_AP, &cfg);
     esp_wifi_set_channel(AP_CHANNEL, WIFI_SECOND_CHAN_NONE);
@@ -390,10 +377,11 @@ void setup() {
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 
-    update_ap_ssid();
+    init_ap_ssid();
+
     ESP_ERROR_CHECK(esp_wifi_start());
     ESP_ERROR_CHECK(esp_wifi_set_channel(AP_CHANNEL, WIFI_SECOND_CHAN_NONE));
 
@@ -517,7 +505,6 @@ void loop() {
                 } else if (strcmp(action, "start") == 0) {
                     broadcastEnabled = true;
                     g_has_data = true;
-                    update_ap_ssid();
                     startBeep();
                     ledFlash(150);
                     Serial.println("START: broadcasts on");
@@ -526,8 +513,6 @@ void loop() {
                     Serial.println("PAUSE: position frozen");
                 }
             }
-
-            if (broadcastEnabled) update_ap_ssid();
 
             if (doc.containsKey("path")) {
                 JsonArray p = doc["path"].as<JsonArray>();
