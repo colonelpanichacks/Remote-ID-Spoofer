@@ -9,22 +9,45 @@
 #include "opendroneid.h"
 #include "odid_wifi.h"
 
+#if defined(M5STAMP_S3)
+  #include <Adafruit_NeoPixel.h>
+#endif
+
 // ── board auto-detect ──
 
 #if defined(ARDUINO_XIAO_ESP32C5)
-  #define BUZZER_PIN  25
-  #define LED_PIN     27
-  #define LED_ON      HIGH
-  #define LED_OFF     LOW
-  #define DUAL_BAND   true
-  #define BOARD_NAME  "XIAO ESP32-C5 (Dual-Band)"
+  #define BUZZER_PIN    25
+  #define LED_PIN       27
+  #define LED_ON        HIGH
+  #define LED_OFF       LOW
+  #define DUAL_BAND     true
+  #define USE_NEOPIXEL  false
+  #define BOARD_NAME    "XIAO ESP32-C5 (Dual-Band)"
+
+#elif defined(M5STAMP_S3)
+  // M5Stack Stamp S3: SK6812 RGB on GPIO21, buzzer on GPIO1 (wire your own)
+  #define NEOPIXEL_PIN  21
+  #define NEOPIXEL_NUM  1
+  #define BUZZER_PIN    1
+  #define LED_PIN       -1
+  #define LED_ON        LOW
+  #define LED_OFF       HIGH
+  #define DUAL_BAND     false
+  #define USE_NEOPIXEL  true
+  #define BOARD_NAME    "M5Stack Stamp S3 (2.4GHz)"
+
 #else
-  #define BUZZER_PIN  3
-  #define LED_PIN     21
-  #define LED_ON      LOW
-  #define LED_OFF     HIGH
-  #define DUAL_BAND   false
-  #define BOARD_NAME  "XIAO ESP32-S3 (2.4GHz)"
+  #define BUZZER_PIN    3
+  #define LED_PIN       21
+  #define LED_ON        LOW
+  #define LED_OFF       HIGH
+  #define DUAL_BAND     false
+  #define USE_NEOPIXEL  false
+  #define BOARD_NAME    "XIAO ESP32-S3 (2.4GHz)"
+#endif
+
+#if USE_NEOPIXEL
+  static Adafruit_NeoPixel neopixel(NEOPIXEL_NUM, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #endif
 
 static const char*   BEACON_SSID     = "Starbucks WiFI";
@@ -39,6 +62,16 @@ static const uint8_t NUM_5G_CHANNELS = 5;
 // band mode: 0=2.4 only, 1=5GHz only, 2=dual
 static uint8_t g_band_mode = DUAL_BAND ? 2 : 0;
 static bool    g_5g_ch_enabled[5] = {true, true, true, true, true};
+
+// ── default config (edit these for standalone operation) ──
+// Set AUTOSTART to true to broadcast on boot without web UI
+#define AUTOSTART       false
+#define DEFAULT_ID      "FRAT0000000001"
+#define DEFAULT_LAT     48.8220        // drone start lat
+#define DEFAULT_LON     2.2700         // drone start lon
+#define DEFAULT_ALT     80             // altitude meters
+#define DEFAULT_PLAT    48.8215        // pilot lat
+#define DEFAULT_PLON    2.2695         // pilot lon
 
 static char    g_basic_id[ODID_ID_SIZE + 1] = "";
 static double  g_drone_lat  = 0.0;
@@ -102,6 +135,44 @@ static void heartbeatTick() {
 
 // ── LED ──
 
+#if USE_NEOPIXEL
+
+static void ledInit() {
+    neopixel.begin();
+    neopixel.setBrightness(30);
+    neopixel.clear();
+    neopixel.show();
+}
+
+static void ledOn() {
+    if (ledMuted) return;
+    neopixel.setPixelColor(0, neopixel.Color(0, 255, 0));  // green
+    neopixel.show();
+}
+
+static void ledOff() {
+    neopixel.clear();
+    neopixel.show();
+}
+
+static void ledFlash(int ms) {
+    if (ledMuted) return;
+    ledOn(); delay(ms); ledOff();
+}
+
+static void ledColor(uint8_t r, uint8_t g, uint8_t b) {
+    if (ledMuted) return;
+    neopixel.setPixelColor(0, neopixel.Color(r, g, b));
+    neopixel.show();
+}
+
+#else
+
+static void ledInit() {
+    pinMode(LED_PIN, OUTPUT);
+    ledOff();
+}
+
 static void ledOn()  { if (!ledMuted) digitalWrite(LED_PIN, LED_ON); }
 static void ledOff() { digitalWrite(LED_PIN, LED_OFF); }
 
@@ -109,6 +180,13 @@ static void ledFlash(int ms) {
     if (ledMuted) return;
     ledOn(); delay(ms); ledOff();
 }
+
+static void ledColor(uint8_t r, uint8_t g, uint8_t b) {
+    // simple LED: just on/off, ignore color
+    if (r || g || b) ledOn(); else ledOff();
+}
+
+#endif
 
 // ── ODID data builder ──
 
@@ -280,8 +358,7 @@ void setup() {
 
     pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(BUZZER_PIN, LOW);
-    pinMode(LED_PIN, OUTPUT);
-    ledOff();
+    ledInit();
 
     delay(300);
     playBootSound();
@@ -320,6 +397,23 @@ void setup() {
 
     ledFlash(100);
     Serial.println("Ready. Awaiting serial commands.\n");
+
+    #if AUTOSTART
+    strncpy(g_basic_id, DEFAULT_ID, ODID_ID_SIZE);
+    g_basic_id[ODID_ID_SIZE] = '\0';
+    g_drone_lat = DEFAULT_LAT;
+    g_drone_lon = DEFAULT_LON;
+    g_drone_alt = DEFAULT_ALT;
+    g_pilot_lat = DEFAULT_PLAT;
+    g_pilot_lon = DEFAULT_PLON;
+    g_has_data = true;
+    broadcastEnabled = true;
+    update_ap_ssid();
+    startBeep();
+    Serial.println("AUTOSTART: broadcasting with default config");
+    Serial.printf("  ID=%s lat=%.4f lon=%.4f alt=%d\n",
+                  g_basic_id, g_drone_lat, g_drone_lon, g_drone_alt);
+    #endif
 }
 
 void loop() {
