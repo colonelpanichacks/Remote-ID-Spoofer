@@ -93,15 +93,16 @@ This project provides:
 
 | Board | WiFi | 5GHz | Buzzer | LED |
 |-------|------|------|--------|-----|
-| **Seeed XIAO ESP32-C5** | WiFi 6 | 2.4 + 5GHz | GPIO25 (D2) | GPIO27 (active HIGH) |
 | **Seeed XIAO ESP32-S3** | WiFi 4 | 2.4GHz only | GPIO3 (D2) | GPIO21 (active LOW) |
 | **M5Stack Stamp S3** | WiFi 4 | 2.4GHz only | GPIO1 (wire your own) | GPIO21 (SK6812 NeoPixel RGB) |
+| **LuatOS ESP32-C3** | WiFi 4 | 2.4GHz only | GPIO8 | GPIO12 (D4, active HIGH) |
+| **Seeed XIAO ESP32-C5** | WiFi 6 | 2.4 + 5GHz | GPIO25 (D2) | GPIO27 (active HIGH) |
 
 Pin mapping and band capability auto-detected at compile time.
 
 ### Optional
-- Passive buzzer on D2 pin for audio feedback (XIAO boards) or GPIO1 (M5Stack Stamp S3)
-- Built-in LED for visual feedback (NeoPixel RGB on M5Stack Stamp S3)
+- Passive buzzer for audio feedback (D2/XIAO, GPIO1 on M5Stack Stamp S3, GPIO8 on LuatOS ESP32-C3)
+- Built-in LED for visual feedback (NeoPixel RGB on M5Stack Stamp S3, GPIO LED on others)
 
 ## Getting Started
 
@@ -122,6 +123,9 @@ pio run -e seeed_xiao_esp32s3 -t upload
 
 # ESP32-S3 — M5Stack Stamp S3 (single-band)
 pio run -e m5stack_stamps3 -t upload
+
+# ESP32-C3 — LuatOS (single-band)
+pio run -e luatos_esp32c3 -t upload
 ```
 
 > **Note (M5Stack Stamp S3):** If the board is not detected, hold the **G0** button while plugging USB, then release to enter download mode. The Stamp S3 uses a built-in SK6812 NeoPixel RGB LED on GPIO21 (green flash on TX) and requires the Adafruit NeoPixel library (automatically pulled by PlatformIO).
@@ -183,7 +187,7 @@ Part of the [OUI Spy](https://github.com/colonelpanichacks/oui-spy) hardware & f
 | [OUI-SPY Foxhunter](https://github.com/colonelpanichacks/ouispy-foxhunter) | Precision BLE proximity tracker for radio direction finding | ESP32-S3 |
 | [Flock-You](https://github.com/colonelpanichacks/flock-you) | Flock Safety & Raven surveillance detector with GPS wardriving | ESP32-S3 |
 | [Sky Spy](https://github.com/colonelpanichacks/Sky-Spy) | Drone Remote ID detector — WiFi + BLE, multi-drone tracking | ESP32-S3 |
-| **Remote-ID-Spoofer** *(this repo)* | Remote ID spoofer & simulator with swarm mode | ESP32-S3 / ESP32-C5 / M5Stack Stamp S3 |
+| **Remote-ID-Spoofer** *(this repo)* | Remote ID spoofer & simulator with swarm mode | ESP32-S3 / ESP32-C3 / ESP32-C5 / M5Stack Stamp S3 |
 | [OUI-SPY UniPwn](https://github.com/colonelpanichacks/Oui-Spy-UniPwn) | Unitree robot BLE exploitation with AutoPwn and web UI | ESP32-S3 |
 
 ## Credits

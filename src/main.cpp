@@ -6,6 +6,8 @@
 #include <esp_netif.h>
 #include <esp_system.h>
 #include <cstring>
+#include <vector>
+#include <algorithm>
 #include "opendroneid.h"
 #include "odid_wifi.h"
 
@@ -14,7 +16,6 @@
 #endif
 
 // ── board auto-detect ──
-
 #if defined(ARDUINO_XIAO_ESP32C5)
   #define BUZZER_PIN    25
   #define LED_PIN       27
@@ -36,6 +37,14 @@
   #define USE_NEOPIXEL  true
   #define BOARD_NAME    "M5Stack Stamp S3 (2.4GHz)"
 
+#elif defined(LUATOS_ESP32C3)
+  #define BUZZER_PIN  8
+  #define LED_PIN     12
+  #define LED_ON      HIGH
+  #define LED_OFF     LOW
+  #define DUAL_BAND   false
+  #define USE_NEOPIXEL false
+  #define BOARD_NAME  "LuatOS ESP32-C3 (2.4GHz)"
 #else
   #define BUZZER_PIN    3
   #define LED_PIN       21
@@ -50,10 +59,9 @@
   static Adafruit_NeoPixel neopixel(NEOPIXEL_NUM, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #endif
 
-static const char*   BEACON_SSID     = "Starbucks WiFI";
+static const char*   BEACON_SSID     = "Starbucks WiFi";
 static const size_t  BEACON_SSID_LEN = 14;
 static const uint8_t AP_CHANNEL      = 6;
-static const char*   CONFIG_SPOOF_MAC = "60:60:1f:d3:B2:6a";
 
 // 5GHz channel table (UNII-3 band)
 static const uint8_t CHANNELS_5G[]   = {149, 153, 157, 161, 165};
@@ -81,18 +89,25 @@ static double  g_pilot_lat  = 0.0;
 static double  g_pilot_lon  = 0.0;
 static bool    g_has_data   = false;
 static bool    broadcastEnabled = false;
-
-static bool    g_dynamic_override = false;
-static uint8_t g_override_src_mac[6] = {0};
-static uint8_t g_send_counter = 0;
-
 static bool    buzzerMuted = false;
 static bool    ledMuted    = false;
-
 static const uint16_t TX_INTERVAL_MS = 1000;
 
-// ── buzzer ──
+struct DroneInfo {
+    char basic_id[ODID_ID_SIZE + 1];
+    double drone_lat;
+    double drone_lon;
+    int drone_alt;
+    double pilot_lat;
+    double pilot_lon;
+    uint8_t mac[6];
+    bool use_custom_mac;
+    uint8_t send_counter;
+};
 
+static std::vector<DroneInfo> g_drones;
+
+// ── Buzzer ──
 static void beep(int freq, int ms) {
     if (buzzerMuted) return;
     tone(BUZZER_PIN, freq, ms);
@@ -102,10 +117,7 @@ static void beep(int freq, int ms) {
 
 static void playBootSound() {
     if (buzzerMuted) return;
-    // Super Mario Bros - Underground/Dungeon (World 1-2) bass riff
-    // C, C(oct), A, A(oct), Bb, Bb(oct) — fast octave pairs
     int notes[]     = { 262, 523, 220, 440, 233, 466 };
-    //                  C4   C5   A3   A4   Bb3  Bb4
     int durations[] = {  80,  80,  80,  80,  80,  80 };
     for (int i = 0; i < 6; i++) {
         tone(BUZZER_PIN, notes[i], durations[i]);
@@ -175,7 +187,6 @@ static void ledInit() {
 
 static void ledOn()  { if (!ledMuted) digitalWrite(LED_PIN, LED_ON); }
 static void ledOff() { digitalWrite(LED_PIN, LED_OFF); }
-
 static void ledFlash(int ms) {
     if (ledMuted) return;
     ledOn(); delay(ms); ledOff();
@@ -189,7 +200,6 @@ static void ledColor(uint8_t r, uint8_t g, uint8_t b) {
 #endif
 
 // ── ODID data builder ──
-
 static void fill_uas_data(ODID_UAS_Data *uas, const char *basic_id,
                           double lat, double lon, int alt,
                           double pilot_lat, double pilot_lon) {
@@ -223,38 +233,15 @@ static void fill_uas_data(ODID_UAS_Data *uas, const char *basic_id,
     uas->SystemValid                 = 1;
 }
 
-static void update_beacon_vendor_ie(ODID_UAS_Data *uas) {
-    uint8_t pack_buf[256];
-    int pack_len = odid_message_build_pack(uas, pack_buf, sizeof(pack_buf));
-    if (pack_len <= 0) return;
-
-    size_t vie_len = 7 + pack_len;
-    uint8_t vie_buf[300];
-    if (vie_len > sizeof(vie_buf)) return;
-
-    vie_buf[0] = 0xDD;
-    vie_buf[1] = (uint8_t)(4 + 1 + pack_len);
-    vie_buf[2] = 0xFA;
-    vie_buf[3] = 0x0B;
-    vie_buf[4] = 0xBC;
-    vie_buf[5] = 0x0D;
-    vie_buf[6] = g_send_counter;
-    memcpy(&vie_buf[7], pack_buf, pack_len);
-
-    esp_wifi_set_vendor_ie(true, WIFI_VND_IE_TYPE_BEACON, WIFI_VND_IE_ID_0, vie_buf);
-    esp_wifi_set_vendor_ie(true, WIFI_VND_IE_TYPE_PROBE_RESP, WIFI_VND_IE_ID_0, vie_buf);
-}
-
-static void send_nan_frames(ODID_UAS_Data *uas, uint8_t *src_mac, uint8_t *frame_buf) {
+static void send_drone_nan_frames(ODID_UAS_Data *uas, uint8_t *src_mac, uint8_t send_counter) {
+    uint8_t frame_buf[512];
     int frame_len;
 
-    frame_len = odid_wifi_build_nan_sync_beacon_frame(
-        (char *)src_mac, frame_buf, 512);
+    frame_len = odid_wifi_build_nan_sync_beacon_frame((char *)src_mac, frame_buf, sizeof(frame_buf));
     if (frame_len > 0)
         esp_wifi_80211_tx(WIFI_IF_AP, frame_buf, frame_len, true);
 
-    frame_len = odid_wifi_build_message_pack_nan_action_frame(
-        uas, (char *)src_mac, g_send_counter, frame_buf, 512);
+    frame_len = odid_wifi_build_message_pack_nan_action_frame(uas, (char *)src_mac, send_counter, frame_buf, sizeof(frame_buf));
     if (frame_len > 0) {
         esp_err_t err = esp_wifi_80211_tx(WIFI_IF_AP, frame_buf, frame_len, true);
         if (err != ESP_OK)
@@ -262,72 +249,44 @@ static void send_nan_frames(ODID_UAS_Data *uas, uint8_t *src_mac, uint8_t *frame
     }
 }
 
-static void inject_odid(const char *basic_id,
-                        double lat, double lon, int alt,
-                        double pilot_lat, double pilot_lon) {
-    if (basic_id[0] == '\0') return;
-
+static void send_drone(const DroneInfo& drone) {
     ODID_UAS_Data uas;
-    fill_uas_data(&uas, basic_id, lat, lon, alt, pilot_lat, pilot_lon);
+    fill_uas_data(&uas, drone.basic_id,
+                  drone.drone_lat, drone.drone_lon, drone.drone_alt,
+                  drone.pilot_lat, drone.pilot_lon);
 
-    uint8_t ap_mac[6];
-    esp_wifi_get_mac(WIFI_IF_AP, ap_mac);
-    uint8_t *src_mac = g_dynamic_override ? g_override_src_mac : ap_mac;
+    uint8_t src_mac[6];
+    if (drone.use_custom_mac) {
+        memcpy(src_mac, drone.mac, 6);
+    } else {
+        esp_wifi_get_mac(WIFI_IF_AP, src_mac);
+    }
 
-    uint8_t frame_buf[512];
+    send_drone_nan_frames(&uas, src_mac, drone.send_counter);
+}
 
-    // vendor IE always rides on AP beacons (ch6 2.4GHz)
-    update_beacon_vendor_ie(&uas);
-
+static void broadcast_all_drones() {
     bool do_2_4 = (g_band_mode == 0 || g_band_mode == 2);
     bool do_5   = (g_band_mode == 1 || g_band_mode == 2) && DUAL_BAND;
 
-    // 2.4GHz NAN frames on AP channel
     if (do_2_4) {
         esp_wifi_set_channel(AP_CHANNEL, WIFI_SECOND_CHAN_NONE);
-        send_nan_frames(&uas, src_mac, frame_buf);
+        for (auto& drone : g_drones) {
+            send_drone(drone);
+            drone.send_counter = (drone.send_counter + 1) % 3;
+        }
     }
 
-    // 5GHz NAN frames -- hop through enabled channels
     if (do_5) {
         for (uint8_t i = 0; i < NUM_5G_CHANNELS; i++) {
             if (!g_5g_ch_enabled[i]) continue;
             esp_wifi_set_channel(CHANNELS_5G[i], WIFI_SECOND_CHAN_NONE);
-            delay(1);
-            send_nan_frames(&uas, src_mac, frame_buf);
+            for (auto& drone : g_drones) {
+                send_drone(drone);
+                drone.send_counter = (drone.send_counter + 1) % 3;
+            }
         }
-        // hop back to AP channel for beacons
-        esp_wifi_set_channel(AP_CHANNEL, WIFI_SECOND_CHAN_NONE);
     }
-
-    g_send_counter = (g_send_counter + 1) % 3;
-}
-
-static void clear_vendor_ie() {
-    esp_wifi_set_vendor_ie(false, WIFI_VND_IE_TYPE_BEACON, WIFI_VND_IE_ID_0, NULL);
-    esp_wifi_set_vendor_ie(false, WIFI_VND_IE_TYPE_PROBE_RESP, WIFI_VND_IE_ID_0, NULL);
-}
-
-static void update_ap_ssid() {
-    wifi_config_t cfg = {};
-    char buf[ODID_ID_SIZE + 10];
-    size_t len;
-
-    if (g_basic_id[0] == '\0') {
-        memcpy(buf, BEACON_SSID, BEACON_SSID_LEN);
-        buf[BEACON_SSID_LEN] = '\0';
-        len = BEACON_SSID_LEN;
-    } else {
-        len = snprintf(buf, sizeof(buf), "RID-%s", g_basic_id);
-    }
-
-    memcpy(cfg.ap.ssid, buf, len);
-    cfg.ap.ssid_len       = (uint8_t)len;
-    cfg.ap.channel        = AP_CHANNEL;
-    cfg.ap.authmode       = WIFI_AUTH_OPEN;
-    cfg.ap.max_connection = 4;
-    esp_wifi_set_config(WIFI_IF_AP, &cfg);
-    esp_wifi_set_channel(AP_CHANNEL, WIFI_SECOND_CHAN_NONE);
 }
 
 static bool parse_mac(const char *str, uint8_t *out) {
@@ -338,6 +297,30 @@ static bool parse_mac(const char *str, uint8_t *out) {
         return false;
     for (int i = 0; i < 6; i++) out[i] = (uint8_t)b[i];
     return true;
+}
+
+static void generate_mac_from_id(const char* id, uint8_t* mac) {
+    uint32_t hash = 0;
+    for (int i = 0; id[i] && i < 20; i++) {
+        hash = hash * 31 + id[i];
+    }
+    mac[0] = 0x60;
+    mac[1] = 0x60;
+    mac[2] = 0x1f;
+    mac[3] = (hash >> 16) & 0xFF;
+    mac[4] = (hash >> 8) & 0xFF;
+    mac[5] = hash & 0xFF;
+}
+
+static void init_ap_ssid() {
+    wifi_config_t cfg = {};
+    memcpy(cfg.ap.ssid, BEACON_SSID, BEACON_SSID_LEN);
+    cfg.ap.ssid_len = BEACON_SSID_LEN;
+    cfg.ap.channel = AP_CHANNEL;
+    cfg.ap.authmode = WIFI_AUTH_OPEN;
+    cfg.ap.max_connection = 4;
+    esp_wifi_set_config(WIFI_IF_AP, &cfg);
+    esp_wifi_set_channel(AP_CHANNEL, WIFI_SECOND_CHAN_NONE);
 }
 
 // ═══════════════════════════════════════════
@@ -364,27 +347,17 @@ void setup() {
     playBootSound();
     ledFlash(200);
 
-    if (!parse_mac(CONFIG_SPOOF_MAC, g_override_src_mac)) {
-        uint32_t rnd = esp_random();
-        g_override_src_mac[0] = 0x60;
-        g_override_src_mac[1] = 0x60;
-        g_override_src_mac[2] = 0x1f;
-        g_override_src_mac[3] = (rnd)       & 0xFF;
-        g_override_src_mac[4] = (rnd >> 8)  & 0xFF;
-        g_override_src_mac[5] = (rnd >> 16) & 0xFF;
-    }
-    g_dynamic_override = true;
-
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_ap();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 
-    update_ap_ssid();
+    init_ap_ssid();
+
     ESP_ERROR_CHECK(esp_wifi_start());
     ESP_ERROR_CHECK(esp_wifi_set_channel(AP_CHANNEL, WIFI_SECOND_CHAN_NONE));
 
@@ -438,17 +411,16 @@ void loop() {
             if (doc.containsKey("path") && !doc.containsKey("drone_lat") && !doc.containsKey("action"))
                 continue;
 
-            // Mute controls
             if (doc.containsKey("buzzer_mute")) {
                 buzzerMuted = doc["buzzer_mute"].as<bool>();
                 if (buzzerMuted) noTone(BUZZER_PIN);
             }
+
             if (doc.containsKey("led_mute")) {
                 ledMuted = doc["led_mute"].as<bool>();
                 if (ledMuted) ledOff();
             }
 
-            // Band mode: 0=2.4 only, 1=5GHz only, 2=dual
             if (doc.containsKey("band_mode")) {
                 uint8_t bm = doc["band_mode"].as<uint8_t>();
                 #if DUAL_BAND
@@ -458,8 +430,6 @@ void loop() {
                 #endif
                 Serial.printf("Band mode: %d\n", g_band_mode);
             }
-
-            // 5GHz channel enables: array of booleans [ch149, ch153, ch157, ch161, ch165]
             if (doc.containsKey("channels_5g")) {
                 JsonArray ch = doc["channels_5g"].as<JsonArray>();
                 if (ch) {
@@ -469,29 +439,48 @@ void loop() {
             }
 
             if (doc.containsKey("basic_id")) {
-                strncpy(g_basic_id, doc["basic_id"] | "", ODID_ID_SIZE);
-                g_basic_id[ODID_ID_SIZE] = '\0';
-            }
+                const char* id = doc["basic_id"];
+                if (id[0] != '\0') {
+                    double lat = doc["drone_lat"] | 0.0;
+                    double lon = doc["drone_long"] | 0.0;
+                    int alt = doc["drone_altitude"] | 0;
+                    double plat = doc["pilot_lat"] | 0.0;
+                    double plon = doc["pilot_long"] | 0.0;
+                    const char* mac_str = doc["mac"] | "";
 
-            if (doc.containsKey("drone_lat") && doc.containsKey("drone_long") && doc.containsKey("drone_altitude")) {
-                g_drone_lat = doc["drone_lat"];
-                g_drone_lon = doc["drone_long"];
-                g_drone_alt = doc["drone_altitude"];
-            }
+                    auto it = std::find_if(g_drones.begin(), g_drones.end(),
+                        [id](const DroneInfo& d) { return strcmp(d.basic_id, id) == 0; });
 
-            if (doc.containsKey("pilot_lat") && doc.containsKey("pilot_long")) {
-                g_pilot_lat = doc["pilot_lat"];
-                g_pilot_lon = doc["pilot_long"];
-            }
+                    if (it != g_drones.end()) {
+                        it->drone_lat = lat;
+                        it->drone_lon = lon;
+                        it->drone_alt = alt;
+                        it->pilot_lat = plat;
+                        it->pilot_lon = plon;
+                        if (strlen(mac_str) > 0) {
+                            it->use_custom_mac = parse_mac(mac_str, it->mac);
+                        }
+                    } else {
+                        DroneInfo newDrone;
+                        strncpy(newDrone.basic_id, id, ODID_ID_SIZE);
+                        newDrone.basic_id[ODID_ID_SIZE] = '\0';
+                        newDrone.drone_lat = lat;
+                        newDrone.drone_lon = lon;
+                        newDrone.drone_alt = alt;
+                        newDrone.pilot_lat = plat;
+                        newDrone.pilot_lon = plon;
+                        newDrone.send_counter = 0;
 
-            g_has_data = true;
-
-            if (doc.containsKey("mac")) {
-                const char *m = doc["mac"] | "";
-                if (!parse_mac(m, g_override_src_mac))
-                    g_dynamic_override = false;
-                else
-                    g_dynamic_override = true;
+                        if (strlen(mac_str) > 0) {
+                            newDrone.use_custom_mac = parse_mac(mac_str, newDrone.mac);
+                        } else {
+                            newDrone.use_custom_mac = true;
+                            generate_mac_from_id(id, newDrone.mac);
+                        }
+                        g_drones.push_back(newDrone);
+                        Serial.printf("Added drone: %s\n", id);
+                    }
+                }
             }
 
             const char *action = doc["action"].as<const char *>();
@@ -500,15 +489,12 @@ void loop() {
 
                 if (strcmp(action, "stop") == 0) {
                     broadcastEnabled = false;
-                    g_has_data = false;
-                    clear_vendor_ie();
+                    g_drones.clear();
                     stopBeep();
                     ledOff();
                     Serial.println("STOP: broadcasts off");
                 } else if (strcmp(action, "start") == 0) {
                     broadcastEnabled = true;
-                    g_has_data = true;
-                    update_ap_ssid();
                     startBeep();
                     ledFlash(150);
                     Serial.println("START: broadcasts on");
@@ -518,28 +504,21 @@ void loop() {
                 }
             }
 
-            if (broadcastEnabled) update_ap_ssid();
-
-            if (doc.containsKey("path")) {
-                JsonArray p = doc["path"].as<JsonArray>();
-                if (p && p.size() == 0) g_has_data = false;
-            }
         } else {
             json_buf[json_idx++] = c;
         }
     }
 
-    if (!broadcastEnabled || !g_has_data) {
+    if (broadcastEnabled && !g_drones.empty()) {
+        if (millis() - lastTx >= TX_INTERVAL_MS) {
+            lastTx = millis();
+            broadcast_all_drones();
+            heartbeatTick();
+            ledFlash(20);
+            const char *bstr = g_band_mode == 0 ? "2.4G" : g_band_mode == 1 ? "5G" : "DUAL";
+            Serial.printf("Swarm TX: %zu drones, band=%s\n", g_drones.size(), bstr);
+        }
+    } else {
         delay(10);
-        return;
-    }
-
-    if (millis() - lastTx >= TX_INTERVAL_MS) {
-        lastTx = millis();
-        inject_odid(g_basic_id, g_drone_lat, g_drone_lon, g_drone_alt, g_pilot_lat, g_pilot_lon);
-        heartbeatTick();
-        ledFlash(20);
-        const char *bstr = g_band_mode == 0 ? "2.4G" : g_band_mode == 1 ? "5G" : "DUAL";
-        Serial.printf("TX lat=%.4f lon=%.4f alt=%d band=%s\n", g_drone_lat, g_drone_lon, g_drone_alt, bstr);
     }
 }
